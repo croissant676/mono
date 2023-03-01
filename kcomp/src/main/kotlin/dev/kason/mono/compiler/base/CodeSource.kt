@@ -94,6 +94,7 @@ class CodeSource(
 	}
 
 	fun lines(): List<String> = lines(1, lineCount())
+	fun lastIndex(): CodeIndex = CodeIndex(this, content.length)
 	override fun toString(): String = "CodeSource(module=$module, name='$name')"
 
 }

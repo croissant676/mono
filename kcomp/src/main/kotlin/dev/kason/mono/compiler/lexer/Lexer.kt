@@ -1,6 +1,8 @@
 package dev.kason.mono.compiler.lexer
 
 import dev.kason.mono.compiler.base.CodeSource
+import dev.kason.mono.compiler.error.CompileException
+import mu.KLogging
 
 // reads tokens one at a time
 class Lexer(val source: CodeSource) {
@@ -56,7 +58,7 @@ class Lexer(val source: CodeSource) {
 			return when {
 				index != source.content.length - 1 && source.content[index + 1] == '(' -> readBlockComment()
 				index != source.content.length - 1 && source.content[index + 1] == '[' -> readDocComment()
-				else -> readLineComment(firstCharacter)
+				else -> readLineComment()
 			}
 		}
 		throw IllegalStateException("unknown character: $firstCharacter")
@@ -72,15 +74,13 @@ class Lexer(val source: CodeSource) {
 		return IdentifierToken(word, source.index(startIndex), hasBackticks = true)
 	}
 
-	fun readLineComment(firstChar: Char): Token {
+	fun readLineComment(): Token {
 		val startIndex = index
 		val comment = readWhile { it != '\n' }
 		index++
 		return CommentToken(comment, source.index(startIndex), CommentType.LINE)
 	}
 
-	// terminate when )# is found
-	// todo nested comments
 	fun readBlockComment(): Token {
 		val startIndex = index
 		val comment = readWhile { it != '#' || source.content[index - 1] != ')' }
@@ -104,10 +104,8 @@ class Lexer(val source: CodeSource) {
 	fun singleQuoteStringLiteral(): Token {
 		val startIndex = index++
 		val string = readWhile { it != '\n' && (it != '\'' || source.content[index - 1] != '\\') }
-		if (index >= source.content.length) {
-			TODO("error: unterminated string literal")
-		} else if (source.content[index] != '\n') {
-			TODO("error: unterminated string literal")
+		if (index >= source.content.length || source.content[index] == '\n') {
+			throw CompileException(UnterminatedDoubleQuoteStringLiteralContext(source.index(startIndex)))
 		}
 		index++
 		return StringLiteralToken(string, source.index(startIndex), singleQuote = true)
@@ -127,7 +125,7 @@ class Lexer(val source: CodeSource) {
 		val startIndex = index++
 		val string = readWhile { it != '"' || source.content[index - 1] == '\\' }
 		if (index >= source.content.length) {
-			TODO("error: unterminated string literal")
+			throw CompileException(UnterminatedDoubleQuoteStringLiteralContext(source.index(startIndex - 1)))
 		}
 		index++
 		return StringLiteralToken(string, source.index(startIndex), singleQuote = false)

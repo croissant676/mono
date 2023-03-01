@@ -1,8 +1,6 @@
 package dev.kason.mono.compiler.error
 
-import dev.kason.mono.compiler.base.CodeRange
-import dev.kason.mono.compiler.base.CodeSource
-import dev.kason.mono.compiler.base.isSingleLine
+import dev.kason.mono.compiler.base.*
 
 class AnnotatedCodeBlock(
 	val source: CodeSource,
@@ -51,6 +49,10 @@ class AnnotatedCodeBlock(
 		}
 	}
 
+	operator fun CodeAnnotation.unaryPlus() {
+		annotations.add(this)
+	}
+
 	override fun toString(): String = buildString {
 		val padTo = endLine.toString().length
 		lines.indices.forEach {
@@ -68,4 +70,6 @@ data class CodeAnnotation(
 			throw IllegalArgumentException("range must be a single line")
 		}
 	}
+
+	constructor(index: CodeIndex, message: String) : this(index.asSingleRange(), message)
 }
