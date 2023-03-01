@@ -85,8 +85,11 @@ class CodeRange(
 	private var internalEndLine = UNINITIALIZED_PROPERTY_VALUE
 	private var internalEndColumn = UNINITIALIZED_PROPERTY_VALUE
 
-	constructor(source: CodeSource, start: CodeIndex, end: CodeIndex)
-		: this(source, start.index, end.index) {
+	constructor(start: CodeIndex, end: CodeIndex)
+		: this(start.source, start.index, end.index) {
+		if (start.source != end.source) {
+			throw IllegalArgumentException("cannot create range from indices from different sources")
+		}
 		initialized = true
 		internalStartLine = start.line
 		internalStartColumn = start.column

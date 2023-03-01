@@ -1,0 +1,9 @@
+external fn print(*String) -> void
+
+fn print(value: Any) {
+	match value {
+		String => print(value),
+		_ => print(value as String)
+	}
+}
+

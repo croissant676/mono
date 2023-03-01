@@ -89,8 +89,11 @@ class CodeSource(
 		return (startLine..endLine).map { line(it + 1) }
 	}
 
-	fun lines(): List<String> = lines(1, lineCount())
+	fun range(startLine: Int, startColumn: Int, endLine: Int, endColumn: Int): CodeRange {
+		return range(index(startLine, startColumn), index(endLine, endColumn))
+	}
 
+	fun lines(): List<String> = lines(1, lineCount())
 	override fun toString(): String = "CodeSource(module=$module, name='$name')"
 
 }
