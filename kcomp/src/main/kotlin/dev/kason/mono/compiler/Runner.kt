@@ -11,10 +11,11 @@ import dev.kason.mono.compiler.module.CodeModule
 fun main() {
 	val source = CodeSource(
 		CodeModule(), "test", """
-			
+		
 		fn main():
 			print("hello world")
-			
+			'
+
     """.trimIndent()
 	)
 	ErrorManager.executeSafe {

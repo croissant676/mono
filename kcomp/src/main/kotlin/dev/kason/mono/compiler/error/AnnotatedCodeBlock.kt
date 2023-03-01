@@ -17,7 +17,7 @@ class AnnotatedCodeBlock(
 		}
 	}
 
-	constructor(range: CodeRange) : this(range.source, range.start.line, range.end.line)
+	constructor(range: CodeRange) : this(range.source, range.start.line, range.endInclusive.line)
 
 	fun StringBuilder.appendLine(index: Int, padTo: Int) {
 		val lineNumber = startLine + index
@@ -29,7 +29,7 @@ class AnnotatedCodeBlock(
 		annotations.filter { it.range.start.line == lineNumber }.forEach {
 			append(" ".repeat(padTo))
 			append(" | ")
-			for (lineIndex in 0 until it.range.startColumn) {
+			for (lineIndex in 0 until (it.range.startColumn - 1)) {
 				if (line[lineIndex] == '\t') {
 					append('\t')
 				} else {

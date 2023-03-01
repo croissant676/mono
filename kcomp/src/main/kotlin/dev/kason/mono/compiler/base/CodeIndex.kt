@@ -73,7 +73,7 @@ class CodeIndex(
 }
 
 
-// starting from start inclusive and ending at end exclusive
+// starting from start inclusive and ending at end inclusive
 class CodeRange(
 	val source: CodeSource,
 	val startIndex: Int,
@@ -85,16 +85,16 @@ class CodeRange(
 	private var internalEndLine = UNINITIALIZED_PROPERTY_VALUE
 	private var internalEndColumn = UNINITIALIZED_PROPERTY_VALUE
 
-	constructor(start: CodeIndex, end: CodeIndex)
-		: this(start.source, start.index, end.index) {
-		if (start.source != end.source) {
+	constructor(start: CodeIndex, endInclusive: CodeIndex)
+		: this(start.source, start.index, endInclusive.index) {
+		if (start.source != endInclusive.source) {
 			throw IllegalArgumentException("cannot create range from indices from different sources")
 		}
 		initialized = true
 		internalStartLine = start.line
 		internalStartColumn = start.column
-		internalEndLine = end.line
-		internalEndColumn = end.column
+		internalEndLine = endInclusive.line
+		internalEndColumn = endInclusive.column
 	}
 
 	val startLine: Int
@@ -112,14 +112,11 @@ class CodeRange(
 	override val start: CodeIndex
 		get() = CodeIndex(source, startIndex, startLine, startColumn)
 
-	val end: CodeIndex
+	override val endInclusive: CodeIndex
 		get() = CodeIndex(source, endIndex, endLine, endColumn)
 
-	override val endInclusive: CodeIndex
-		get() = end - 1
-
 	val length: Int
-		get() = endIndex - startIndex
+		get() = endIndex - startIndex - 1
 
 	private fun initializeIfNot(): Int {
 		if (!initialized) {
@@ -136,7 +133,7 @@ class CodeRange(
 
 	override fun iterator(): Iterator<CodeIndex> = object : Iterator<CodeIndex> {
 		var index = startIndex
-		override fun hasNext(): Boolean = index < endIndex
+		override fun hasNext(): Boolean = index <= endIndex
 		override fun next(): CodeIndex = CodeIndex(source, index++)
 	}
 
@@ -151,7 +148,7 @@ class CodeRange(
 	}
 
 	operator fun component0(): CodeIndex = start
-	operator fun component1(): CodeIndex = end
+	operator fun component1(): CodeIndex = endInclusive
 
 	override fun hashCode(): Int {
 		var result = source.hashCode()
@@ -168,13 +165,14 @@ class CodeRange(
 }
 
 
-fun CodeIndex.asSingleRange(): CodeRange = CodeRange(source, index, index + 1)
+fun CodeIndex.asSingleRange(): CodeRange = CodeRange(this, this)
+
 fun CodeIndex.lineStart(): CodeIndex = source.lineStartAt(index)
 fun CodeIndex.lineEnd(): CodeIndex = source.lineEndAt(index)
 
 fun CodeIndex.charValue(): Char = source.content[index]
 fun CodeIndex.line(): String = source.line(line)
-fun CodeIndex.isValidIndex(): Boolean = index in source.content.indices
+fun CodeIndex.isValid(): Boolean = index in source.content.indices
 
 val CodeRange.isSingleLine: Boolean
 	get() = startLine == endLine

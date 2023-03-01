@@ -25,7 +25,11 @@ object ErrorManager {
 		try {
 			block()
 		} catch (compilerException: CompileException) {
-			report(compilerException)
+			try {
+				report(compilerException)
+			} catch (throwable: Exception) {
+				report(CompileException(InternalErrorContext(throwable)))
+			}
 		} catch (otherError: Throwable) {
 			report(CompileException(InternalErrorContext(otherError)))
 		}
