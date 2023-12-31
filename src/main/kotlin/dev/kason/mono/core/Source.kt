@@ -45,6 +45,7 @@ class StringSource(
 class FileSource(val file: File, override val module: Module? = null) : Source() {
 
 	constructor(path: String, module: Module? = null) : this(File(path), module)
+
 	override val name: String = file.path
 	private var lastRead: Long = 0
 
@@ -70,8 +71,8 @@ class Document(val source: Source, val text: String) : CharSequence by text {
 	val newlineIndices: List<Int> = listOf(-1) + indices.filter { text[it] == '\n' } + length
 	val lineCount = newlineIndices.size - 1
 
-	val fullRange = range(0, length - 1)
-	val emptyRange by lazy { range(1, 0) } // this will throw an exception if the document is empty
+	val fullRange = range(0, if (isEmpty()) 0 else length - 1)
+	val emptyRange = range(if (isEmpty()) 0 else 1, 0)
 
 	internal fun rangeCheck(index: Int) = require(index in indices) {
 		"index $index out of bounds for $this with length $length"
@@ -104,8 +105,8 @@ class Document(val source: Source, val text: String) : CharSequence by text {
 	fun getEndNL(line: Int): Int = lineCheck(line) then newlineIndices[line]
 
 	// getStart() > getEnd() if line is empty
-	fun getEnd(line: Int): Int = getEndNL(line) - 1
-	fun getStart(line: Int): Int = getStartNL(line) + 1
+	fun getEnd(line: Int): Int = (getEndNL(line) - 1).coerceAtLeast(0)
+	fun getStart(line: Int): Int = (getStartNL(line) + 1).coerceAtMost(lastIndex)
 	fun lineLength(line: Int): Int = getEndNL(line) - getStart(line)
 
 	fun readLine(line: Int): String = text.substring(getStart(line), getEndNL(line))

@@ -5,7 +5,7 @@ import dev.kason.mono.core.IndexRange
 import dev.kason.mono.core.read
 
 class Token(val tokenKind: TokenKind, val range: IndexRange) {
-	val text: String get() = range.read()
+	val text: String = range.read()
 	val document: Document get() = range.document
 	override fun toString(): String =
 		"'$tokenKind' token ($range, '${text.escape()}')"
@@ -15,7 +15,8 @@ sealed interface TokenKind
 
 enum class TokenKinds : TokenKind {
 	EOF,
-	Identifier, // includes keywords
+	Identifier,
+	Keyword,
 	Indent,
 	Dedent, // created in post
 	Newline,
@@ -66,39 +67,14 @@ data class FloatLiteralTokenKind(
 }
 
 enum class LiteralTokenKinds : TokenKind {
-	String,
 	Char,
 	Boolean;
 
-	override fun toString(): kotlin.String = name.lowercase()
+	override fun toString(): String = name.lowercase()
 }
 
-// token predicate
-
-typealias TokenPredicate = (Token) -> Boolean
-
-inline infix fun Token.satisfies(tokenPredicate: TokenPredicate): Boolean = tokenPredicate(this)
-inline infix fun TokenCursor.satisfies(tokenPredicate: TokenPredicate): Boolean =
-	peek()?.satisfies(tokenPredicate) ?: false
-
-class HasTextTokenPredicate internal constructor(val text: String) : TokenPredicate {
-	override fun invoke(token: Token): Boolean {
-		if (token.tokenKind != TokenKinds.Symbol) return token.text == text
-		return token.text.startsWith(text)
-	}
-}
-
-private val hasTextPredicateCache: MutableMap<String, HasTextTokenPredicate> = mutableMapOf()
-
-fun hasText(text: String): HasTextTokenPredicate =
-	hasTextPredicateCache.getOrPut(text) { HasTextTokenPredicate(text) }
-
-fun hasType(type: TokenKind): TokenPredicate = { it.tokenKind == type }
-inline fun hasType(crossinline typePredicate: (TokenKind) -> Boolean): TokenPredicate = { typePredicate(it.tokenKind) }
-inline fun <reified T> hasType(): TokenPredicate = { it.tokenKind is T }
-
-inline infix fun TokenPredicate.and(crossinline other: TokenPredicate): TokenPredicate = { this(it) && other(it) }
-inline infix fun TokenPredicate.or(crossinline other: TokenPredicate): TokenPredicate = { this(it) || other(it) }
-fun TokenPredicate.not(): TokenPredicate = { !this(it) }
-
-// it's probably better to not use these, but they might be needed for parsing
+data class StringLiteralTokenKind(
+	val startCurly: Boolean,
+	val endCurly: Boolean,
+	val identCount: Int = 0
+): TokenKind

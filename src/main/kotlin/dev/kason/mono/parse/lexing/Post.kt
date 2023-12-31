@@ -4,6 +4,7 @@ import dev.kason.mono.core.Document
 import dev.kason.mono.core.Index
 import dev.kason.mono.core.IndexRange
 import dev.kason.mono.core.read
+import javax.swing.plaf.basic.BasicSliderUI.ActionScroller
 
 class TokenStream(val document: Document, val tokens: List<Token>) : List<Token> by tokens {
 
@@ -11,6 +12,8 @@ class TokenStream(val document: Document, val tokens: List<Token>) : List<Token>
 		.addPseudoIndentations()
 		.pairIndent()
 		.glueSymbols()
+		.glueFunctionalPairs()
+		.addHardKeywords()
 
 	override fun toString(): String {
 		val builder = StringBuilder()
@@ -22,37 +25,85 @@ class TokenStream(val document: Document, val tokens: List<Token>) : List<Token>
 	}
 }
 
+fun TokenStream.filter(predicate: (Token) -> Boolean): TokenStream =
+	TokenStream(document, tokens.filter(predicate))
+
+fun TokenStream.removeUnnecessaryTokens(): TokenStream =
+	filter {
+		it.tokenKind != TokenKinds.Whitespace && it.tokenKind != TokenKinds.Unknown
+			&& it.tokenKind !is CommentTokenKind
+	}
+
 class TokenCursor(val tokenStream: TokenStream) : Iterator<Token> {
 	var position: Int = 0
 		private set
-	val reachedEnd: Boolean get() = position >= tokenStream.size
+
 	val current: Token? get() = peek()
 	val next: Token? get() = peek(1)
 	val previous: Token? get() = peek(-1)
-	fun outOfBounds(offset: Int): Boolean = position + offset in tokenStream.indices
+	fun outOfBounds(offset: Int = 0): Boolean = (position + offset) !in tokenStream.indices
 
 	fun peek(offset: Int = 0): Token? = tokenStream.getOrNull(position + offset)
 	fun eat(): Token? {
-		val token = peek()
+		val token = current
 		if (token != null) {
 			position++
 		}
 		return token
 	}
 
-	override fun hasNext(): Boolean = !outOfBounds(0)
-	override fun next(): Token = eat() ?: throw NoSuchElementException()
+	fun expect(predicate: (Token) -> Boolean): Token {
+		val token = eat()
+		if (token == null || !predicate(token)) {
+			throw NoSuchElementException("current token $token does not satisfy predicate")
+		}
+		return token
+	}
 
-	inline fun eatWhile(predicate: TokenPredicate): List<Token> {
+	override fun hasNext(): Boolean = !outOfBounds()
+	override fun next(): Token = eat() ?: throw NoSuchElementException("position $position")
+
+	fun next(number: Int): List<Token> {
+		val list: MutableList<Token> = mutableListOf()
+		repeat(number) {
+			list += eat() ?: throw NoSuchElementException("position $position")
+		}
+		return list
+	}
+
+	fun eatIf(predicate: (Token) -> Boolean): Token? {
+		val token = peek()
+		if (token != null && predicate(token)) {
+			eat()
+			return token
+		}
+		return null
+	}
+
+	inline fun eatWhile(predicate: (Token) -> Boolean): List<Token> {
 		val list: MutableList<Token> = mutableListOf()
 		var token: Token?
 		do {
-			token = eat()
-			if (token != null && token satisfies predicate) {
+			token = peek()
+			if (token != null && predicate(token)) {
 				list.add(token)
+				eat()
 			} else break
 		} while (true)
 		return list
+	}
+
+	// returns the result of the block if it succeeds, if not
+	// it will return null and reset the position
+	fun <T> transaction(block: TokenCursor.() -> T): T? {
+		val oldPosition = position
+		return try {
+			block()
+		} catch (e: Exception) {
+			position = oldPosition
+			e.printStackTrace()
+			null
+		}
 	}
 }
 
@@ -78,6 +129,9 @@ fun TokenStream.addPseudoIndentations(): TokenStream {
 		newStream += line.drop(indent)
 		newStream += cursor.eat() ?: break
 	}
+	repeat(previousLineIndent) {
+		newStream += Token(TokenKinds.Dedent, document.emptyRange)
+	}
 	return TokenStream(document, newStream)
 }
 
@@ -91,7 +145,7 @@ fun TokenStream.pairIndent(): TokenStream {
 			TokenKinds.Indent, TokenKinds.Dedent -> {
 				val tokens = cursor.eatWhile {
 					it.tokenKind == TokenKinds.Indent || it.tokenKind == TokenKinds.Dedent
-				}
+				} + token
 				var netIndent = 0
 				tokens.forEach {
 					if (it.tokenKind == TokenKinds.Indent) netIndent++
@@ -125,7 +179,7 @@ fun TokenStream.removeNLAfterBackslash(): TokenStream {
 		}
 		val tokens: MutableList<Token> = mutableListOf(token) // tokens we add back if we can't find a newline
 		tokens += cursor.eatWhile { it.tokenKind == TokenKinds.Whitespace }
-		if (cursor.next?.tokenKind != TokenKinds.Newline) {
+		if (cursor.current?.tokenKind != TokenKinds.Newline) {
 			newStream += tokens
 			continue
 		}
@@ -138,53 +192,130 @@ fun TokenStream.removeNLAfterBackslash(): TokenStream {
 }
 
 
-private val actionMap = mapOf(
-	"<" to "<=",
-	"<<" to "=",
-	">" to ">=",
-	">>" to "=",
-	">>>" to "=",
-	"!" to "=",
-	"=" to "=",
-	"+" to "+=",
-	"-" to "-=",
-	"*" to "*=",
-	"/" to "=",
-	"**" to "=",
-	"%" to "=",
-	"|" to "|=",
-	"&" to "&=",
-	"^" to "=",
-	"~" to "=",
-	"?" to ":"
+@OptIn(ExperimentalStdlibApi::class)
+private fun createActionMap(vararg actions: String) = buildMap<String, String> {
+	for (action in actions) {
+		for (characterCount in 1..<action.length) {
+			val key = action.substring(0, characterCount)
+			val value = action[characterCount]
+			merge(key, value.toString(), String::plus)
+		}
+	}
+}
+
+private val actionMap = createActionMap(
+	"<-",
+	"<=",
+	">=",
+	"==", "!=",
+	"===", "!==",
+	"->", "=>",
+	"++", "--",
+	"**", "+=", "-=", "*=", "/=", "%=",
+	"?:", "..",
 )
 
 fun TokenStream.glueSymbols(): TokenStream {
 	val cursor = TokenCursor(this)
 	val newStream: MutableList<Token> = mutableListOf()
 	var start: Index? = null
-	fun rangeUpToCurrentToken(): IndexRange {
+	fun rangeUpTo(token: Token = cursor.peek(-2)!!): IndexRange {
 		val properStart = start!!
-		val properEnd = cursor.previous!!.range.endInclusive
+		val properEnd = token.range.endInclusive
 		return properStart..properEnd
 	}
 	for (token in cursor) {
 		if (token.tokenKind != TokenKinds.Symbol) {
 			if (start != null) {
-				newStream += Token(TokenKinds.Symbol, rangeUpToCurrentToken())
+				newStream += Token(TokenKinds.Symbol, rangeUpTo())
 				start = null
 			}
 			newStream += token
 		} else if (start == null) {
 			start = token.range.start
 		} else {
-			val currentRange = rangeUpToCurrentToken()
+			val currentRange = rangeUpTo()
 			if (currentRange.read() in actionMap.keys && token.text in actionMap[currentRange.read()]!!) {
 				continue
 			} else {
 				newStream += Token(TokenKinds.Symbol, currentRange)
 				start = token.range.start
 			}
+		}
+	}
+	if (start != null) {
+		newStream += Token(TokenKinds.Symbol, rangeUpTo(cursor.previous!!))
+	}
+	return TokenStream(document, newStream)
+}
+
+fun TokenStream.gluePair(first: String, second: String): TokenStream {
+	val cursor = TokenCursor(this)
+	val newStream: MutableList<Token> = mutableListOf()
+	for (token in cursor) {
+		if (token.text != first) {
+			newStream += token
+			continue
+		}
+		val next = cursor.peek()
+		if (next?.text == second) {
+			newStream += Token(TokenKinds.Keyword, token.range.start..next.range.endInclusive)
+			cursor.eat()
+		} else {
+			newStream += token
+		}
+	}
+	return TokenStream(document, newStream)
+}
+
+private val functionalPairs = listOf(
+	"as" to "?",
+	"!" to "is",
+	"!" to "in",
+)
+
+fun TokenStream.glueFunctionalPairs(): TokenStream =
+	functionalPairs.fold(this) { stream, (first, second) ->
+		stream.gluePair(first, second)
+	}
+
+val hardKeywords = listOf(
+	"as",
+	"as?",
+	"break",
+	"struct",
+	"continue",
+	"do",
+	"else",
+	"for",
+	"def",
+	"if",
+	"in",
+	"!in",
+	"is",
+	"!is",
+	"return",
+	"impl",
+	"self",
+	"throw",
+	"try",
+	"while",
+	"mut",
+	"var"
+)
+
+fun TokenStream.addHardKeywords(): TokenStream {
+	val cursor = TokenCursor(this)
+	val newStream: MutableList<Token> = mutableListOf()
+	for (token in cursor) {
+		if (token.tokenKind != TokenKinds.Identifier) {
+			newStream += token
+			continue
+		}
+		newStream += if (token.text in hardKeywords) {
+			Token(TokenKinds.Keyword, token.range)
+		} else {
+			token
 		}
 	}
 	return TokenStream(document, newStream)

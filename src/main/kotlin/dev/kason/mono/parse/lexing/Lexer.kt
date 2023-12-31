@@ -3,7 +3,7 @@ package dev.kason.mono.parse.lexing
 import dev.kason.mono.core.*
 
 // indicates that the given character is outside the range of the cursor.
-const val OUT_OF_RANGE: Char = 0.toChar()
+private const val OUT_OF_RANGE: Char = 0.toChar()
 
 class LexerCursor(val range: IndexRange) : Iterator<Char> {
 	// if position is at a given location, i, source[i] is the next char to be read
@@ -68,7 +68,7 @@ class Lexer(val range: IndexRange) : Iterable<Token> {
 		check(cursor.current == '`')
 		cursor.eat()
 		cursor.eatWhile { isQuoteIdentifierPart() }
-		if (cursor.next != '`') {
+		if (cursor.current != '`') {
 			error("quoted identifier did not end with `")
 		}
 		cursor.eat()
@@ -133,6 +133,7 @@ class Lexer(val range: IndexRange) : Iterable<Token> {
 						return IntLiteralTokenKind(base, isEmpty = true)
 					}
 				}
+
 				in '0'..'9', '_' -> eatDecimalDigits()
 				'.', 'e', 'E' -> {} // move on to next step
 				else -> return IntLiteralTokenKind(base, isEmpty = false) // just 0
@@ -230,39 +231,44 @@ class Lexer(val range: IndexRange) : Iterable<Token> {
 	// only when braceNesting is 0 can the interpolation exit
 	private var braceNesting = 0
 
-	internal fun eatStringLiteral() {
+	// edit 12/30/2023, change syntax from ${} to #{}, cleaner
+	internal fun eatStringLiteral(): StringLiteralTokenKind {
 		// allow } because  interpolation
 		check(cursor.current == '"' || cursor.current == '}')
+		val startCurly = cursor.current == '}'
+		var identCount = 0
 		cursor.eat()
 		while (cursor.hasNext()) {
 			val current = cursor.current
 			if (current == '"') {
 				cursor.eat()
-				return
-			} else if (current == '$') {
+				return StringLiteralTokenKind(startCurly, endCurly = false, identCount)
+			} else if (current == '#') {
 				cursor.eat()
 				// dont check for bounds
-				// because if $ is last, then we will add $ to string
+				// because if # is last, then we will add # to string
 				// leading to break and error
 				val next = cursor.current
 				if (next == '{') {
 					interpolationLocations.add(cursor.positionIndex)
 					cursor.eat()
-					return
+					return StringLiteralTokenKind(startCurly, endCurly = true, identCount)
 				} else if (next == '`') {
 					tokenBacklog.add(
 						createToken(TokenKinds.Identifier) { eatQuotedIdentifier() }
 					)
+					identCount++
 				} else if (next.isIdentifierStart()) {
 					tokenBacklog.add(
 						createToken(TokenKinds.Identifier) { eatIdentifier() }
 					)
+					identCount++
 				} else continue
 			} else if (current == '\\') {
-				if (cursor.current == '"' || cursor.current == '\$') {
+				cursor.eat()
+				if (cursor.current == '"' || cursor.current == '#') {
 					cursor.eat()
 				}
-				cursor.eat()
 			} else cursor.eat()
 		}
 		error("str literal ended unexpectedly")
@@ -279,8 +285,7 @@ class Lexer(val range: IndexRange) : Iterable<Token> {
 		if (interpolationLocations.isNotEmpty()) {
 			if (braceNesting == 0) {
 				interpolationLocations.removeLast()
-				eatStringLiteral()
-				return LiteralTokenKinds.String
+				return eatStringLiteral()
 			}
 			braceNesting--
 		}
@@ -293,8 +298,8 @@ class Lexer(val range: IndexRange) : Iterable<Token> {
 
 	fun nextToken(): Token {
 		val peek = cursor.current()
-		if (peek == OUT_OF_RANGE) return Token(TokenKinds.EOF, range)
 		if (tokenBacklog.isNotEmpty()) return tokenBacklog.removeFirst()
+		if (peek == OUT_OF_RANGE) return Token(TokenKinds.EOF, range)
 		return when {
 			peek == '#' -> {
 				createToken { eatComment() }
@@ -309,14 +314,14 @@ class Lexer(val range: IndexRange) : Iterable<Token> {
 				val indexRange = start..<cursor.position
 				val text = indexRange.read()
 				if (text.toBooleanStrictOrNull() != null) {
-					Token(LiteralTokenKinds.Boolean, indexRange)
+					return Token(LiteralTokenKinds.Boolean, indexRange)
 				}
 				Token(TokenKinds.Identifier, indexRange)
 			}
 
 			peek.isDigit() -> createToken { eatNumber() }
 			peek == '\'' -> createToken(LiteralTokenKinds.Char) { eatCharLiteral() }
-			peek == '\"' -> createToken(LiteralTokenKinds.String) { eatStringLiteral() }
+			peek == '\"' -> createToken { eatStringLiteral() }
 			peek == '{' || peek == '}' -> createToken { eatCurlyBrackets() }
 			peek.isOtherWhitespace() -> createToken(TokenKinds.Whitespace) { readWhitespace() }
 			peek in singleCharacterTokens -> createToken(TokenKinds.Symbol) { cursor.eat() }
@@ -325,7 +330,7 @@ class Lexer(val range: IndexRange) : Iterable<Token> {
 	}
 
 	override fun iterator(): Iterator<Token> = object : Iterator<Token> {
-		override fun hasNext(): Boolean = cursor.hasNext()
+		override fun hasNext(): Boolean = cursor.hasNext() || tokenBacklog.isNotEmpty()
 		override fun next(): Token = nextToken()
 	}
 

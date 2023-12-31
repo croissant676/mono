@@ -16,6 +16,7 @@ dependencies {
 	implementation("com.lectra:koson:1.2.8")
 	implementation("com.github.ajalt.mordant:mordant:2.1.0")
 	testImplementation(kotlin("test"))
+	testImplementation("hu.webarticum:tree-printer:3.1.0")
 	implementation(kotlin("stdlib-jdk8"))
 }
 

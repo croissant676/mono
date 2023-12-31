@@ -117,8 +117,8 @@ class IndexRange(val document: Document, val startIndex: Int, val endIndex: Int)
 	val endLine: Int get() = initialize() then internalEndLine
 	val endColumn: Int get() = initialize() then internalEndColumn
 
-	override val start: Index get() = Index(document, startIndex, startLine, startColumn)
-	override val endInclusive: Index get() = Index(document, endIndex, endLine, endColumn)
+	override val start: Index get() = Index(document, startLine, startColumn, startIndex)
+	override val endInclusive: Index get() = Index(document, endLine, endColumn, endIndex)
 
 	override fun iterator(): Iterator<Index> = object : Iterator<Index> {
 		private var index = startIndex
@@ -148,3 +148,25 @@ val Index.line: Line get() = document.lines[lineNumber]
 val IndexRange.lineNumbers: IntRange get() = startLine..endLine
 val IndexRange.lines: List<Line> get() = document.lines[lineNumbers]
 
+// returns a range that covers both ranges fully
+operator fun IndexRange.rangeTo(other: IndexRange): IndexRange = IndexRange(this, other)
+
+operator fun IndexRange.contains(otherRange: IndexRange): Boolean =
+	otherRange.start >= start && otherRange.endInclusive <= endInclusive
+
+fun IndexRange(vararg ranges: IndexRange): IndexRange {
+	if (ranges.isEmpty()) error("no ranges provided")
+	val document = ranges.first().document
+	var min: Int = Int.MAX_VALUE
+	var max: Int = Int.MIN_VALUE
+	for (range in ranges) {
+		if (range.document != document) error("ranges must be from the same document")
+		if (range.startIndex < min) min = range.startIndex
+		if (range.endIndex > max) max = range.endIndex
+	}
+	return IndexRange(document, min, max)
+}
+
+fun IndexRange(ranges: Iterable<IndexRange>) = IndexRange(*ranges.toList().toTypedArray())
+fun IndexRange.expand(distance: Int): IndexRange = IndexRange(document, startIndex - distance, endIndex + distance)
+fun IndexRange.contract(distance: Int): IndexRange = expand(-distance)

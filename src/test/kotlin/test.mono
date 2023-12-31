@@ -1,0 +1,7 @@
+struct Test:
+	a: int
+	b: int = 5
+	c: str = "hello"
+
+value = Test(a = 1, b = 2)
+print("value.a is #(value.a)")

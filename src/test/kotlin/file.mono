@@ -1,4 +1,44 @@
-fun main() {
-	val x: Int = 5
-	println("hello world ${ 5.toString() }")
-}
+struct sample_struct:
+	a: int
+	b: str{size < 10} = "hello"
+	vec: list<int>
+
+list{int}
+
+structs = list(sample_struct(5, vec = list(1, 2, 3))
+# struct: mut list<sample_struct>
+
+print(structs)
+# we pass immutable reference to list
+
+def sample_func(struct: sample_struct):
+	sample_struct.a = 10 # compiler error, struct is immutable
+
+def correct_sample_func(struct: mut sample_struct):
+	sample_struct.a = 10 # ok, struct is mutable
+
+impl sample_struct:
+	def sample_method(mut self):
+		self.a = 10 # ok, self is mutable
+
+	def sample_method(mut self(a <tetr
+
+def (mut sample_struct).sample_method():
+	self.a = 10 # ok, self is mutable
+
+def (sample_struct).sample_method():
+	self.a = 10 # compiler error, self is immutable
+
+def (var sample_struct).sample_method():
+	self.a = 10 # self is not mutable but is variable
+	self = sample_struct(10, "hello", list(1, 2, 3)) # ok, we can reassign self
+
+def lt_test(a: sample_struct, b : sample_struct(lt a < b)) -> list[int](lt a):
+
+
+text: "hello world" = "hello world" # text has type "hello world", we can't change it
+text = "hello" # we can't convert value "hello" to type "hello world"
+
+# if we do
+text_2 = var text
+# text_2 has type var "hello world", we can change it, but only to value of type "hello world"
